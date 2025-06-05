@@ -175,7 +175,7 @@ class BancoApp:
     
     def llegada_clientes(self):
         while self.running:
-            time.sleep(4)  # Cada 20 segundos
+            time.sleep(2)  # Cada 4 segundos
             if not self.running:
                 break
                 
