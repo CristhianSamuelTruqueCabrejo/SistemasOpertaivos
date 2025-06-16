@@ -5,10 +5,10 @@ import threading
 import time
 from collections import deque
 
-class FIFOSchedulerApp:
+class FIFOSchedulerWithTimeline:
     def __init__(self, root):
         self.root = root
-        self.root.title("Planificador FIFO Corregido")
+        self.root.title("Planificador FIFO con Timeline")
         
         # Variables de estado
         self.process_queue = deque()
@@ -17,7 +17,8 @@ class FIFOSchedulerApp:
         self.current_time = 0
         self.is_running = False
         self.process_counter = 1
-        self.simulation_speed = 1.0  # Factor de velocidad de simulación
+        self.simulation_speed = 1.0
+        self.timeline_data = []
         
         # Configurar interfaz
         self.setup_ui()
@@ -36,12 +37,13 @@ class FIFOSchedulerApp:
         control_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.W)
         
         ttk.Button(control_frame, text="Agregar Proceso", command=self.add_random_process).grid(row=0, column=0, padx=5)
+        ttk.Button(control_frame, text="Mostrar Timeline", command=self.show_timeline).grid(row=0, column=3, padx=5)
         
         # Control de velocidad
-        ttk.Label(control_frame, text="Velocidad:").grid(row=0, column=3, padx=(10,0))
+        ttk.Label(control_frame, text="Velocidad:").grid(row=0, column=4, padx=(10,0))
         self.speed_scale = ttk.Scale(control_frame, from_=0.1, to=2.0, value=1.0, 
                                     command=lambda v: setattr(self, 'simulation_speed', float(v)))
-        self.speed_scale.grid(row=0, column=4, padx=5)
+        self.speed_scale.grid(row=0, column=5, padx=5)
         
         # Panel de proceso actual
         current_frame = ttk.LabelFrame(main_frame, text="Proceso Actual", padding=10)
@@ -148,6 +150,13 @@ class FIFOSchedulerApp:
                     waiting_time             # espera
                 ))
                 
+                # Registrar datos para timeline
+                self.timeline_data.append((
+                    self.current_process[0],
+                    start_time,
+                    finish_time
+                ))
+                
                 # Preparar para siguiente proceso
                 self.current_time = finish_time
                 self.is_running = False
@@ -156,6 +165,76 @@ class FIFOSchedulerApp:
             
             time.sleep(0.1)
     
+    def show_timeline(self):
+        """Muestra una ventana con el diagrama de timeline"""
+        if not self.timeline_data:
+            messagebox.showinfo("Timeline", "No hay datos de ejecución para mostrar")
+            return
+        
+        timeline_window = tk.Toplevel(self.root)
+        timeline_window.title("Timeline de Ejecución")
+        
+        # Configurar canvas
+        canvas_width = 800
+        canvas_height = 200
+        time_scale = canvas_width / max(1, self.current_time)
+        
+        canvas = tk.Canvas(timeline_window, width=canvas_width, height=canvas_height, bg='white')
+        canvas.pack(pady=10)
+        
+        # Dibujar eje de tiempo
+        canvas.create_line(50, 50, canvas_width - 50, 50, width=2)
+        for t in range(0, self.current_time + 1):
+            x = 50 + t * (canvas_width - 100) / max(1, self.current_time)
+            canvas.create_line(x, 45, x, 55, width=1)
+            canvas.create_text(x, 65, text=str(t))
+        
+        # Dibujar barras de procesos
+        colors = ['#FF9999', '#99FF99', '#9999FF', '#FFFF99', '#FF99FF', '#99FFFF']
+        for i, (name, start, end) in enumerate(self.timeline_data):
+            x1 = 50 + start * (canvas_width - 100) / max(1, self.current_time)
+            x2 = 50 + end * (canvas_width - 100) / max(1, self.current_time)
+            color = colors[i % len(colors)]
+            
+            canvas.create_rectangle(x1, 100, x2, 140, fill=color, outline='black')
+            canvas.create_text((x1 + x2) / 2, 120, text=name)
+            canvas.create_text((x1 + x2) / 2, 160, text=f"{start}-{end}")
+        
+        # Leyenda
+        legend_frame = ttk.Frame(timeline_window)
+        legend_frame.pack(pady=5)
+        
+        for i, (name, start, end) in enumerate(self.timeline_data[:6]):  # Mostrar hasta 6 en leyenda
+            color = colors[i % len(colors)]
+            ttk.Label(legend_frame, text=name, background=color, width=5).grid(row=0, column=i, padx=5)
+        
+        # Botón para guardar
+        ttk.Button(timeline_window, text="Guardar Imagen", 
+                  command=lambda: self.save_timeline_image(canvas)).pack(pady=10)
+    
+    def save_timeline_image(self, canvas):
+        """Guarda el timeline como imagen PNG"""
+        from tkinter import filedialog
+        import os
+        
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+            title="Guardar Timeline como"
+        )
+        
+        if file_path:
+            try:
+                canvas.postscript(file=file_path + '.eps', colormode='color')
+                from PIL import Image
+                img = Image.open(file_path + '.eps')
+                img.save(file_path, 'png')
+                os.remove(file_path + '.eps')
+                messagebox.showinfo("Éxito", f"Timeline guardado como {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo guardar la imagen: {str(e)}")
+    
+    # [Resto de los métodos permanecen iguales...]
     def update_current_process_display(self, remaining_time):
         """Actualiza la visualización del proceso en ejecución"""
         self.root.after(0, lambda: [
@@ -218,10 +297,11 @@ class FIFOSchedulerApp:
         self.current_time = 0
         self.is_running = False
         self.process_counter = 1
+        self.timeline_data.clear()
         self.update_displays()
         messagebox.showinfo("Sistema Reiniciado", "Todos los procesos han sido eliminados")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = FIFOSchedulerApp(root)
+    app = FIFOSchedulerWithTimeline(root)
     root.mainloop()
