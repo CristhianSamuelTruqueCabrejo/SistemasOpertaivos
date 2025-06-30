@@ -1,143 +1,106 @@
-import tkinter as tk
-from threading import Thread
+import threading
 import time
+import tkinter as tk
+from tkinter import ttk
 
-# ------------------------------
-# Implementación de Dekker V1
-# ------------------------------
-class DekkerV1:
-    def __init__(self):
-        # flags indican si cada proceso quiere entrar a la sección crítica
-        self.flag = [False, False]
-        self.counter = 0
+class DekkerGUI:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Algoritmo de Dekker - Comparación V1 vs V4")
 
-    def run_p0(self, update_gui):
-        while True:
-            self.flag[0] = True  # Proceso 0 quiere entrar
-            while self.flag[1]:  # Espera activa si el otro también quiere entrar
-                update_gui("P0", "Esperando", "yellow")
+        # Estado compartido
+        self.want = [False, False]
+        self.turn = 0
+
+        # Control de ejecución
+        self.running_v1 = False
+        self.running_v4 = False
+
+        # Interface gráfica
+        self.canvas = tk.Canvas(master, width=600, height=300)
+        self.canvas.pack()
+
+        # Etiquetas
+        self.canvas.create_text(100, 20, text="Versión 1 - Sin turno (alto acoplamiento)", font=("Arial", 10, "bold"))
+        self.canvas.create_text(400, 20, text="Versión 4 - Con turno (sin interbloqueo)", font=("Arial", 10, "bold"))
+        self.canvas.create_text(100, 230, text="P0 (rápido)", font=("Arial", 10))
+        self.canvas.create_text(100, 280, text="P1 (lento)", font=("Arial", 10))
+        self.canvas.create_text(400, 230, text="P0 (rápido)", font=("Arial", 10))
+        self.canvas.create_text(400, 280, text="P1 (lento)", font=("Arial", 10))
+
+        # Rectángulos de estado
+        self.boxes_v1 = [
+            self.canvas.create_rectangle(50, 50 + i*50, 150, 90 + i*50, fill="white") for i in range(2)
+        ]
+        self.boxes_v4 = [
+            self.canvas.create_rectangle(350, 50 + i*50, 450, 90 + i*50, fill="white") for i in range(2)
+        ]
+
+        # Leyenda de colores
+        self.canvas.create_text(300, 180, text="🟢 Verde: en sección crítica\n🟡 Amarillo: esperando acceso\n⚪ Blanco: fuera de sección crítica\n🟠 Naranja: esperando turno", font=("Arial", 9))
+
+        # Botones
+        self.start_button_v1 = ttk.Button(master, text="Iniciar Versión 1", command=self.run_v1)
+        self.start_button_v1.pack(pady=5)
+
+        self.start_button_v4 = ttk.Button(master, text="Iniciar Versión 4", command=self.run_v4)
+        self.start_button_v4.pack(pady=5)
+
+    def set_color(self, version, pid, color):
+        if version == 1:
+            self.canvas.itemconfig(self.boxes_v1[pid], fill=color)
+        else:
+            self.canvas.itemconfig(self.boxes_v4[pid], fill=color)
+
+    def proceso_v1(self, pid):
+        other = 1 - pid
+        delay = 0.2 if pid == 0 else 1.5  # Proceso 0 es rápido, Proceso 1 es lento
+        while self.running_v1:
+            self.want[pid] = True
+            while self.want[other]:
+                self.set_color(1, pid, "yellow")  # Esperando turno
                 time.sleep(0.1)
-            update_gui("P0", "Entrando", "green")
-            self.counter += 1  # Simula trabajo en la sección crítica
-            time.sleep(1)
-            update_gui("P0", "Saliendo", "red")
-            self.flag[0] = False  # Sale de la sección crítica
-            time.sleep(1)
+            self.set_color(1, pid, "green")  # Entrando sección crítica
+            time.sleep(delay)
+            self.want[pid] = False
+            self.set_color(1, pid, "white")  # Saliendo
+            time.sleep(delay)
 
-    def run_p1(self, update_gui):
-        while True:
-            self.flag[1] = True
-            while self.flag[0]:
-                update_gui("P1", "Esperando", "yellow")
-                time.sleep(0.1)
-            update_gui("P1", "Entrando", "green")
-            self.counter += 1
-            time.sleep(1)
-            update_gui("P1", "Saliendo", "red")
-            self.flag[1] = False
-            time.sleep(1)
+    def run_v1(self):
+        if not self.running_v1:
+            self.running_v1 = True
+            self.want = [False, False]
+            threading.Thread(target=self.proceso_v1, args=(0,), daemon=True).start()
+            threading.Thread(target=self.proceso_v1, args=(1,), daemon=True).start()
 
-# ------------------------------
-# Implementación de Dekker V4
-# ------------------------------
-class DekkerV4:
-    def __init__(self):
-        self.flag = [False, False]
-        self.turn = 0  # variable de turno para ceder el paso al otro proceso
-        self.counter = 0
-
-    def run_p0(self, update_gui):
-        while True:
-            self.flag[0] = True
-            while self.flag[1]:
-                if self.turn != 0:
-                    self.flag[0] = False
-                    while self.turn != 0:
-                        update_gui("P0", "Esperando turno", "yellow")
+    def proceso_v4(self, pid):
+        other = 1 - pid
+        delay = 0.2 if pid == 0 else 1.5  # Proceso 0 es rápido, Proceso 1 es lento
+        while self.running_v4:
+            self.want[pid] = True
+            while self.want[other]:
+                if self.turn != pid:
+                    self.want[pid] = False
+                    self.set_color(2, pid, "orange")  # Esperando turno
+                    while self.turn != pid:
                         time.sleep(0.1)
-                    self.flag[0] = True
-            update_gui("P0", "Entrando", "green")
-            self.counter += 1
-            time.sleep(1)
-            update_gui("P0", "Saliendo", "red")
-            self.turn = 1
-            self.flag[0] = False
-            time.sleep(1)
+                    self.want[pid] = True
+            self.set_color(2, pid, "green")  # Entrando sección crítica
+            time.sleep(delay)
+            self.turn = other
+            self.want[pid] = False
+            self.set_color(2, pid, "white")
+            time.sleep(delay)
 
-    def run_p1(self, update_gui):
-        while True:
-            self.flag[1] = True
-            while self.flag[0]:
-                if self.turn != 1:
-                    self.flag[1] = False
-                    while self.turn != 1:
-                        update_gui("P1", "Esperando turno", "yellow")
-                        time.sleep(0.1)
-                    self.flag[1] = True
-            update_gui("P1", "Entrando", "green")
-            self.counter += 1
-            time.sleep(1)
-            update_gui("P1", "Saliendo", "red")
+    def run_v4(self):
+        if not self.running_v4:
+            self.running_v4 = True
+            self.want = [False, False]
             self.turn = 0
-            self.flag[1] = False
-            time.sleep(1)
+            threading.Thread(target=self.proceso_v4, args=(0,), daemon=True).start()
+            threading.Thread(target=self.proceso_v4, args=(1,), daemon=True).start()
 
-# ------------------------------
-# Interfaz gráfica con Tkinter
-# ------------------------------
-def start_gui():
-    root = tk.Tk()
-    root.title("Algoritmos de Dekker V1 vs V4")
-    root.geometry("800x400")
-
-    # Dividir pantalla en dos partes
-    left_frame = tk.Frame(root, width=400, height=400, bg="lightblue")
-    right_frame = tk.Frame(root, width=400, height=400, bg="lightgreen")
-    left_frame.pack(side="left", fill="both", expand=True)
-    right_frame.pack(side="right", fill="both", expand=True)
-
-    # Elementos visuales para Versión 1 (izquierda)
-    label_v1 = tk.Label(left_frame, text="Dekker Versión 1", font=("Arial", 16))
-    label_v1.pack(pady=10)
-    p0_v1_status = tk.Label(left_frame, text="P0: ---", font=("Arial", 12), bg="white")
-    p0_v1_status.pack(pady=5)
-    p1_v1_status = tk.Label(left_frame, text="P1: ---", font=("Arial", 12), bg="white")
-    p1_v1_status.pack(pady=5)
-
-    # Elementos visuales para Versión 4 (derecha)
-    label_v4 = tk.Label(right_frame, text="Dekker Versión 4", font=("Arial", 16))
-    label_v4.pack(pady=10)
-    p0_v4_status = tk.Label(right_frame, text="P0: ---", font=("Arial", 12), bg="white")
-    p0_v4_status.pack(pady=5)
-    p1_v4_status = tk.Label(right_frame, text="P1: ---", font=("Arial", 12), bg="white")
-    p1_v4_status.pack(pady=5)
-
-    # Instancias de los algoritmos
-    dekker1 = DekkerV1()
-    dekker4 = DekkerV4()
-
-    # Función para actualizar la GUI para V1
-    def update_v1(process, status, color):
-        if process == "P0":
-            p0_v1_status.config(text=f"P0: {status}", bg=color)
-        else:
-            p1_v1_status.config(text=f"P1: {status}", bg=color)
-
-    # Función para actualizar la GUI para V4
-    def update_v4(process, status, color):
-        if process == "P0":
-            p0_v4_status.config(text=f"P0: {status}", bg=color)
-        else:
-            p1_v4_status.config(text=f"P1: {status}", bg=color)
-
-    # Iniciar los hilos de ejecución (procesos simulados)
-    Thread(target=dekker1.run_p0, args=(update_v1,), daemon=True).start()
-    Thread(target=dekker1.run_p1, args=(update_v1,), daemon=True).start()
-    Thread(target=dekker4.run_p0, args=(update_v4,), daemon=True).start()
-    Thread(target=dekker4.run_p1, args=(update_v4,), daemon=True).start()
-
-    root.mainloop()
-
-# Punto de entrada
 if __name__ == "__main__":
-    start_gui()
+    root = tk.Tk()
+    app = DekkerGUI(root)
+    root.mainloop()
