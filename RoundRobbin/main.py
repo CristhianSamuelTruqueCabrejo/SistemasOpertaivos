@@ -17,7 +17,7 @@ class Proceso:
         self.tiempo_comienzo = -1
         self.tiempo_final = -1
         self.tiempo_espera = 0
-        self.tiempo_retorno = 0
+        self.tiempo_retorno = 0 
         self.tiempo_en_cola_actual = 0
         self.envejecimiento = 0
         self.color = self.generar_color()
